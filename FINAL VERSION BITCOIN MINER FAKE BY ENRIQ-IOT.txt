@@ -1,0 +1,402 @@
+#include <Arduino.h>
+#include <U8g2lib.h>
+
+// =====================================================
+// ENRIQIOT BTC MINER
+// FAKE BITCOIN MINING SIMULATOR
+// ESP32 + 0.96" OLED 128x64
+//
+// IMPORTANT:
+// This is only a visual simulation.
+// It does NOT mine or receive real Bitcoin.
+// =====================================================
+
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(
+  U8G2_R0,
+  U8X8_PIN_NONE
+);
+
+unsigned long lastUpdate = 0;
+unsigned long lastBlock = 0;
+
+float hashRate = 0;
+float fakeBTC = 0;
+
+uint32_t hashes = 0;
+uint32_t accepted = 0;
+uint32_t blocks = 0;
+
+int animation = 0;
+bool mining = true;
+
+// How often a fake block can appear
+const unsigned long BLOCK_MIN_TIME = 15000;
+const unsigned long BLOCK_MAX_TIME = 35000;
+
+unsigned long nextBlockTime;
+
+// =====================================================
+// CENTER TEXT
+// =====================================================
+
+void centerText(const char *text, int y) {
+  int width = u8g2.getStrWidth(text);
+  u8g2.drawStr((128 - width) / 2, y, text);
+}
+
+// =====================================================
+// STARTUP
+// =====================================================
+
+void startupScreen() {
+
+  u8g2.clearBuffer();
+
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  centerText("ENRIQIOT", 22);
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+  centerText("BTC MINER", 38);
+
+  u8g2.setFont(u8g2_font_5x8_tf);
+  centerText("BOOTING MINER...", 54);
+
+  u8g2.sendBuffer();
+
+  delay(1200);
+
+  // Loading animation
+
+  for (int i = 0; i <= 100; i += 4) {
+
+    u8g2.clearBuffer();
+
+    u8g2.setFont(u8g2_font_6x10_tf);
+    centerText("ENRIQIOT MINER", 15);
+
+    u8g2.drawFrame(8, 27, 112, 10);
+
+    int width = (108 * i) / 100;
+
+    if (width > 0)
+      u8g2.drawBox(10, 29, width, 6);
+
+    char text[20];
+    sprintf(text, "STARTING %d%%", i);
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+    centerText(text, 53);
+
+    u8g2.sendBuffer();
+
+    delay(45);
+  }
+
+  delay(500);
+
+  // Initial fake mining values
+
+  hashRate = random(250, 900);
+
+  nextBlockTime =
+    millis() + random(BLOCK_MIN_TIME, BLOCK_MAX_TIME);
+}
+
+// =====================================================
+// MINING SCREEN
+// =====================================================
+
+void drawMiningScreen() {
+
+  u8g2.clearBuffer();
+
+  // Header
+
+  u8g2.setFont(u8g2_font_5x8_tf);
+
+  u8g2.drawStr(0, 7, "ENRIQIOT");
+
+  u8g2.drawStr(75, 7, "BTC-MINER");
+
+  u8g2.drawHLine(0, 9, 128);
+
+  // Status
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+
+  u8g2.drawStr(0, 20, "STATUS:");
+
+  u8g2.drawStr(43, 20, "MINING");
+
+  // Animated mining dots
+
+  for (int i = 0; i < 4; i++) {
+
+    if ((animation + i) % 2 == 0)
+      u8g2.drawBox(86 + i * 7, 14, 5, 5);
+    else
+      u8g2.drawFrame(86 + i * 7, 14, 5, 5);
+  }
+
+  // Hashrate
+
+  char buffer[32];
+
+  if (hashRate < 1000) {
+
+    sprintf(buffer, "HASH: %.0f H/s", hashRate);
+
+  } else {
+
+    sprintf(buffer, "HASH: %.1f KH/s",
+            hashRate / 1000.0);
+  }
+
+  u8g2.drawStr(0, 32, buffer);
+
+  // Shares
+
+  sprintf(buffer, "SHARES: %lu",
+          (unsigned long)accepted);
+
+  u8g2.drawStr(0, 43, buffer);
+
+  // Blocks
+
+  sprintf(buffer, "BLOCKS: %lu",
+          (unsigned long)blocks);
+
+  u8g2.drawStr(72, 43, buffer);
+
+  // Mining activity bar
+
+  u8g2.drawFrame(0, 48, 128, 8);
+
+  int barPosition = (animation * 9) % 116;
+
+  u8g2.drawBox(barPosition + 2, 50, 10, 4);
+
+  // Footer
+
+  u8g2.setFont(u8g2_font_4x6_tf);
+
+  u8g2.drawStr(0, 63,
+               "SIMULATION // NO REAL BTC");
+
+  u8g2.sendBuffer();
+}
+
+// =====================================================
+// BITCOIN COIN
+// =====================================================
+
+void drawCoin(int x, int y, int frame) {
+
+  // Outer coin
+
+  u8g2.drawCircle(x, y, 15);
+
+  // Inner coin
+
+  u8g2.drawCircle(x, y, 11);
+
+  // Bitcoin B
+
+  u8g2.setFont(u8g2_font_10x20_tf);
+
+  if (frame % 2 == 0)
+    u8g2.drawStr(x - 4, y + 7, "B");
+  else
+    u8g2.drawStr(x - 5, y + 7, "B");
+}
+
+// =====================================================
+// BLOCK FOUND ANIMATION
+// =====================================================
+
+void blockFoundAnimation() {
+
+  mining = false;
+
+  blocks++;
+
+  // Generate fake reward
+
+  fakeBTC =
+    random(10, 100) / 1000000.0;
+
+  accepted++;
+
+  // -----------------------------------------------
+  // PHASE 1: BLOCK FOUND
+  // -----------------------------------------------
+
+  for (int i = 0; i < 3; i++) {
+
+    u8g2.clearBuffer();
+
+    u8g2.setFont(u8g2_font_7x14B_tf);
+
+    centerText("!!! BLOCK !!!", 22);
+
+    centerText("FOUND", 42);
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+
+    centerText("ENRIQIOT MINER", 57);
+
+    u8g2.sendBuffer();
+
+    delay(350);
+
+    u8g2.clearBuffer();
+
+    u8g2.sendBuffer();
+
+    delay(150);
+  }
+
+  // -----------------------------------------------
+  // PHASE 2: COIN ANIMATION
+  // -----------------------------------------------
+
+  for (int frame = 0; frame < 12; frame++) {
+
+    u8g2.clearBuffer();
+
+    u8g2.setFont(u8g2_font_6x10_tf);
+
+    centerText("BITCOIN FOUND!", 10);
+
+    // Coin moves toward center
+
+    int x = 15 + frame * 9;
+
+    drawCoin(x, 34, frame);
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+
+    centerText("VERIFYING BLOCK...", 57);
+
+    u8g2.sendBuffer();
+
+    delay(100);
+  }
+
+  // -----------------------------------------------
+  // PHASE 3: REWARD
+  // -----------------------------------------------
+
+  char reward[32];
+
+  sprintf(reward,
+          "+ %.6f BTC",
+          fakeBTC);
+
+  for (int i = 0; i < 5; i++) {
+
+    u8g2.clearBuffer();
+
+    u8g2.setFont(u8g2_font_7x14B_tf);
+
+    centerText("BTC REWARD", 17);
+
+    u8g2.setFont(u8g2_font_10x20_tf);
+
+    centerText(reward, 43);
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+
+    centerText("FAKE SIMULATION", 57);
+
+    u8g2.sendBuffer();
+
+    delay(250);
+  }
+
+  // -----------------------------------------------
+  // PHASE 4: RETURN TO MINING
+  // -----------------------------------------------
+
+  u8g2.clearBuffer();
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+
+  centerText("REWARD ADDED!", 25);
+
+  u8g2.setFont(u8g2_font_5x8_tf);
+
+  centerText("RESUMING MINING...", 45);
+
+  u8g2.sendBuffer();
+
+  delay(1200);
+
+  mining = true;
+
+  nextBlockTime =
+    millis() + random(BLOCK_MIN_TIME, BLOCK_MAX_TIME);
+}
+
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup() {
+
+  u8g2.begin();
+
+  randomSeed(
+    analogRead(0) +
+    micros()
+  );
+
+  startupScreen();
+
+  lastBlock = millis();
+
+  mining = true;
+}
+
+// =====================================================
+// LOOP
+// =====================================================
+
+void loop() {
+
+  // Update mining display
+
+  if (millis() - lastUpdate >= 350) {
+
+    lastUpdate = millis();
+
+    // Fake changing hashrate
+
+    hashRate =
+      random(250, 950);
+
+    // Fake hashes
+
+    hashes +=
+      random(50000, 400000);
+
+    // Random fake accepted shares
+
+    if (random(0, 12) == 0) {
+
+      accepted++;
+    }
+
+    animation++;
+
+    drawMiningScreen();
+  }
+
+  // Check for fake block
+
+  if (millis() >= nextBlockTime &&
+      mining) {
+
+    blockFoundAnimation();
+  }
+}
