@@ -1,0 +1,156 @@
+#include <Arduino.h>
+#include <U8g2lib.h>
+
+// =====================================================
+// ENRIQIOT BTC MINER — FAKE MINING SIMULATOR
+// ESP32 + 0.96" OLED (128x64)
+// Does NOT mine real Bitcoin.
+// =====================================================
+
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+
+unsigned long lastUpdate = 0;
+unsigned long startTime = 0;
+
+uint32_t hashes = 0;
+uint32_t accepted = 0;
+uint32_t blocks = 0;
+float hashRate = 0;
+
+bool mining = false;
+int anim = 0;
+
+void centerText(const char* text, int y) {
+  int w = u8g2.getStrWidth(text);
+  u8g2.drawStr((128 - w) / 2, y, text);
+}
+
+void startupScreen() {
+  u8g2.clearBuffer();
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+  centerText("ENRIQIOT", 20);
+
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  centerText("BTC MINER", 40);
+
+  u8g2.setFont(u8g2_font_5x8_tf);
+  centerText("INITIALIZING...", 56);
+
+  u8g2.sendBuffer();
+  delay(1200);
+
+  for (int i = 0; i <= 100; i += 5) {
+    u8g2.clearBuffer();
+
+    u8g2.setFont(u8g2_font_6x10_tf);
+    centerText("ENRIQIOT MINER", 15);
+
+    u8g2.drawFrame(8, 28, 112, 10);
+    u8g2.drawBox(10, 30, (108 * i) / 100, 6);
+
+    char buf[20];
+    sprintf(buf, "STARTING %d%%", i);
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+    centerText(buf, 52);
+
+    u8g2.sendBuffer();
+    delay(60);
+  }
+
+  delay(400);
+}
+
+void drawMiner() {
+  u8g2.clearBuffer();
+
+  // Header
+  u8g2.setFont(u8g2_font_5x8_tf);
+  u8g2.drawStr(0, 7, "ENRIQIOT");
+  u8g2.drawStr(72, 7, "BTC-MINER");
+  u8g2.drawHLine(0, 9, 128);
+
+  // Mining status
+  u8g2.setFont(u8g2_font_6x10_tf);
+
+  if (mining) {
+    u8g2.drawStr(0, 20, "STATUS:");
+    u8g2.drawStr(43, 20, "MINING");
+
+    // Animated blocks
+    for (int i = 0; i < 5; i++) {
+      if ((i + anim) % 2 == 0)
+        u8g2.drawBox(88 + i * 7, 13, 5, 5);
+      else
+        u8g2.drawFrame(88 + i * 7, 13, 5, 5);
+    }
+  }
+
+  // Hashrate
+  char line[32];
+
+  if (hashRate < 1000) {
+    sprintf(line, "HASH: %.0f H/s", hashRate);
+  } else {
+    sprintf(line, "HASH: %.1f KH/s", hashRate / 1000.0);
+  }
+
+  u8g2.drawStr(0, 32, line);
+
+  // Fake accepted shares
+  sprintf(line, "SHARES: %lu", (unsigned long)accepted);
+  u8g2.drawStr(0, 43, line);
+
+  // Fake blocks
+  sprintf(line, "BLOCKS: %lu", (unsigned long)blocks);
+  u8g2.drawStr(70, 43, line);
+
+  // Activity bar
+  u8g2.drawFrame(0, 49, 128, 8);
+
+  int bar = (anim * 18) % 116;
+  u8g2.drawBox(bar + 2, 51, 10, 4);
+
+  // Tiny footer
+  u8g2.setFont(u8g2_font_4x6_tf);
+  u8g2.drawStr(0, 63, "SIMULATION // NOT REAL BTC MINING");
+
+  u8g2.sendBuffer();
+}
+
+void setup() {
+  u8g2.begin();
+
+  randomSeed(analogRead(0));
+
+  startupScreen();
+
+  startTime = millis();
+  mining = true;
+}
+
+void loop() {
+  if (millis() - lastUpdate >= 500) {
+    lastUpdate = millis();
+
+    // Generate believable-looking fake mining numbers
+    hashRate = random(180, 850);
+
+    hashes += random(90000, 450000);
+
+    // Occasionally accept a fake share
+    if (random(0, 18) == 0) {
+      accepted++;
+    }
+
+    // Extremely rare fake block
+    if (random(0, 300) == 0) {
+      blocks++;
+    }
+
+    anim++;
+
+    drawMiner();
+  }
+}
